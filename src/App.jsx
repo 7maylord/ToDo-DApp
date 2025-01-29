@@ -17,27 +17,42 @@ export default function TaskApp() {
 
   useEffect(() => {
     async function loadBlockchainData() {
-      if (window.ethereum) {
-        try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
-          await window.ethereum.request({ method: "eth_requestAccounts" });
-          const signer = provider.getSigner();
-          const contract = new ethers.Contract(contractAddress, abi, signer);
-          setProvider(provider);
-          setSigner(signer);
-          setContract(contract);
-          fetchTasks(contract);
-          toast.success("Wallet connected successfully!");
-        } catch (err) {
-          toast.error(`Error connecting wallet: ${err.message}`);
-        }
-      } else {
-        toast.warn("Please install MetaMask to use this app.");
-      }
+      await requestAccounts(); // Request wallet connection
+      const contract = await getContract(); // Get the contract with provider
+      setContract(contract);
+      fetchTasks(contract); // Fetch tasks
     }
     loadBlockchainData();
   }, []);
 
+  // Request wallet connection
+  async function requestAccounts() {
+    if (typeof window.ethereum !== "undefined") {
+      try {
+        await window.ethereum.request({ method: "eth_requestAccounts" });
+        toast.success("Wallet connected successfully!");
+      } catch (err) {
+        toast.error(`Wallet connection failed: ${err.message}`);
+      }
+    } else {
+      toast.warn("Please add wallet to use this app.");
+    }
+  }
+
+  // Get contract instance with or without signer
+  async function getContract(signer = false) {
+    if (typeof window.ethereum !== "undefined") {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      return signer
+        ? new ethers.Contract(contractAddress, abi, await provider.getSigner())
+        : new ethers.Contract(contractAddress, abi, provider);
+    } else {
+      toast.error("Ethereum provider is not available.");
+      return null;
+    }
+  }
+
+  // Fetch tasks from the contract
   async function fetchTasks(contract) {
     if (contract) {
       try {
@@ -49,12 +64,14 @@ export default function TaskApp() {
     }
   }
 
+  // Add a new task
   async function addTask() {
     if (contract && taskTitle && taskText) {
       try {
-        const tx = await contract.addTask(taskText, taskTitle, false);
+        const myContract = await getContract(true); // Get contract with signer
+        const tx = await myContract.addTask(taskText, taskTitle, false);
         await tx.wait();
-        fetchTasks(contract);
+        fetchTasks(contract); // Refresh tasks
         setTaskTitle("");
         setTaskText("");
         toast.success("Task added successfully!");
@@ -66,12 +83,14 @@ export default function TaskApp() {
     }
   }
 
+  // Delete a task
   async function deleteTask(taskId) {
     if (contract) {
       try {
-        const tx = await contract.deleteTask(taskId);
+        const myContract = await getContract(true); // Get contract with signer
+        const tx = await myContract.deleteTask(taskId);
         await tx.wait();
-        fetchTasks(contract);
+        fetchTasks(contract); // Refresh tasks
         toast.success("Task deleted successfully!");
       } catch (err) {
         toast.error(`Failed to delete task: ${err.message}`);
