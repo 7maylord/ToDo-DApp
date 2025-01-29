@@ -11,94 +11,64 @@ export default function TaskApp() {
   const [tasks, setTasks] = useState([]);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskText, setTaskText] = useState("");
-  const [contract, setContract] = useState(null);
-  const [provider, setProvider] = useState(null);
-  const [signer, setSigner] = useState(null);
 
   // Initialize provider and contract on app load
-  useEffect(() => {
-    async function initializeApp() {
-      await requestAccounts();
-      const contract = await getContract();
-      setContract(contract);
-      fetchTasks(contract);
-    }
-    initializeApp();
-  }, []);
-
-  // Request wallet connection
   async function requestAccounts() {
-    if (typeof window.ethereum !== "undefined") {
-      try {
-        await window.ethereum.request({ method: "eth_requestAccounts" });
-        toast.success("Wallet connected successfully!");
-      } catch (err) {
-        toast.error(`Wallet connection failed: ${err.message}`);
-      }
-    } else {
-      toast.warn("Please add a wallet to use this app.");
-    }
+    await window.ethereum.request({ method: "eth_requestAccounts" });
   }
 
-  // Get contract instance (with or without signer)
-  async function getContract() {
+   // Fetch task
+  async function fetchTasks() {
     if (typeof window.ethereum !== "undefined") {
       const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(contractAddress, abi, provider);
       const signer = await provider.getSigner();
-      return contract.connect(signer);
-    } else {
-      toast.error("Ethereum provider is not available.");
-      return null;
+      const contract = new ethers.Contract(contractAddress, abi, signer);
+      try {
+        const taskList = await contract.getMyTask();
+        setTasks(taskList);
+      } catch (error) {
+        toast.error("Error fetching tasks:", error);
+      }
     }
   }
-
-  // Fetch tasks from the contract
-  const fetchTasks = useCallback(async (contract) => {
-    try {
-      const tasks = await contract.getMyTask();
-      setTasks(tasks);
-      toast.success("Tasks fetched successfully!");
-    } catch (err) {
-      toast.error(`Failed to fetch tasks: ${err.message}`);
-    }
-  }, []);
-
-  // Refresh task list after changes
-  const refreshTasks = useCallback(async () => {
-    if (contract) {
-      await fetchTasks(contract);
-    }
-  }, [contract, fetchTasks]);
+  
 
   // Add a new task
   async function addTask() {
-    if (contract && taskTitle && taskText) {
+    if (!taskTitle || !taskText)
+      return toast.error("Please enter task details");
+    if (typeof window.ethereum !== "undefined") {
+      await requestAccounts();
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const myContract = new ethers.Contract(contractAddress, abi, signer);
       try {
-        const tx = await contract.addTask(taskText, taskTitle, false);
+        const tx = await myContract.addTask(taskText, taskTitle, false);
         await tx.wait();
-        await refreshTasks(); // Refresh tasks after adding
+        toast.success("Task added successfully");
         setTaskTitle("");
         setTaskText("");
-        toast.success("Task added successfully!");
-      } catch (err) {
-        toast.error(`Failed to add task: ${err.message}`);
+        fetchTasks();
+      } catch (error) {
+        toast.error("Error adding task:", error);
       }
-    } else {
-      toast.warn("Please enter both task title and description.");
     }
   }
 
   // Delete a task
   async function deleteTask(taskId) {
-    if (contract) {
+    if (typeof window.ethereum !== "undefined") {
+      await requestAccounts();
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const theContract = new ethers.Contract(contractAddress, abi, signer);
       try {
-        const tx = await contract.deleteTask(taskId);
+        const tx = await theContract.deleteTask(taskId);
         await tx.wait();
-        await refreshTasks(); // Refresh tasks after deletion
-        toast.success("Task deleted successfully!");
-      } catch (err) {
-        toast.error(`Failed to delete task: ${err.message}`);
+        toast.success("Task deleted successfully");
+        fetchTasks();
+      } catch (error) {
+        toast.error("Error deleting task:", error);
       }
     }
   }
